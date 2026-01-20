@@ -26,9 +26,3 @@ O código faz uso de bibliotecas de sistema Unix (`<termios.h>`, `<unistd.h>`, `
 
 Você precisará de um compilador C++ instalado (como `g++` ou `clang++`).
 
-## 🛠️ Como Rodar
-
-1. **Clone o repositório:**
-   ```bash
-   git clone [https://github.com/SEU_USUARIO/znack.git](https://github.com/SEU_USUARIO/znack.git)
-   cd znack
