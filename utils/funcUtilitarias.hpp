@@ -1,4 +1,3 @@
-
 #ifndef FUNC_UTILS_HPP
 #define FUNC_UTILS_HPP
 
@@ -7,15 +6,14 @@
 
 using namespace std;
 
-bool verificaPosicaCobrinha(vector<pair<int, int>> &posicoesCobra,
+bool verificaPosicaCobrinha(const vector<pair<int, int>> &posicoesCobra,
                             const pair<int, int> &posicao);
-void printMapa(int &tamanho, vector<pair<int, int>> &posicoesCobrinha,
-               pair<int, int> &posicaoFruta);
-void verificaCrescimento(vector<pair<int, int>> &posicoesCobrinha,
-                         pair<int, int> &cabecaNova,
-                         pair<int, int> &posicaoFruta, int &tamanho);
-pair<int, int> criarFruta(int &tamanho);
-bool verificaMorte(vector<pair<int, int>> &posicoesCobrinha,
-                   const pair<int, int> cabecaNova, int &tamanho);
+pair<int, int> criarFruta(const vector<pair<int, int>> &posicoesCobrinha,
+                          int tamanho);
+bool verificaCrescimento(vector<pair<int, int>> &posicoesCobrinha,
+                         const pair<int, int> &cabecaNova,
+                         pair<int, int> &posicaoFruta, int tamanho);
+bool verificaMorte(const vector<pair<int, int>> &posicoesCobrinha,
+                   const pair<int, int> &cabecaNova, int tamanho);
 
 #endif
