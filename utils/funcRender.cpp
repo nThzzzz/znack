@@ -4,6 +4,8 @@
 #include <iostream>
 #include <limits>
 #include <string>
+#include <sys/ioctl.h>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -96,16 +98,45 @@ static void desenharLogo() {
        << "\n\n";
 }
 
+// Um quadro ocupa tamanho + 6 linhas (bordas, placar e rodape) por
+// 2 * tamanho + 4 colunas. Se nao couber, cada redraw rola a tela e o
+// \033[H passa a mirar o topo errado, embaralhando o desenho.
+static int tamanhoMaximo() {
+  struct winsize janela;
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &janela) != 0 || janela.ws_row == 0) {
+    return 40;
+  }
+
+  int porLinhas = (int)janela.ws_row - 6;
+  int porColunas = ((int)janela.ws_col - 4) / 2;
+  int maximo = (porLinhas < porColunas) ? porLinhas : porColunas;
+
+  return (maximo > 40) ? 40 : maximo;
+}
+
 int telaInicial() {
   cout << "\033[2J\033[H";
   desenharLogo();
 
+  int maximo = tamanhoMaximo();
+  if (maximo < 8) {
+    cout << "  " << FRUTA << "a janela do terminal e pequena demais" << RESET
+         << APAGADO << " (precisa de pelo menos 20 colunas x 14 linhas)" << RESET
+         << "\n\n";
+    maximo = 8;
+  }
+
   int tamanho = 0;
   while (true) {
     cout << "  " << DESTAQUE << "Tamanho do campo NxN" << RESET << APAGADO
-         << " (8 a 40): " << RESET << flush;
+         << " (8 a " << maximo << "): " << RESET << flush;
 
-    if (cin >> tamanho && tamanho >= 8 && tamanho <= 40) {
+    if (cin >> tamanho && tamanho >= 8 && tamanho <= maximo) {
+      break;
+    }
+
+    if (cin.eof()) {
+      tamanho = 8;
       break;
     }
 
