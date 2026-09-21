@@ -45,7 +45,7 @@ O jogo utiliza manipulação de terminal em nível baixo (`termios.h`, `unistd.h
 
 ## ⚙️ Pré-requisitos
 
-O código faz uso de bibliotecas de sistema Unix (`<termios.h>`, `<unistd.h>`, `<fcntl.h>`). Por isso, ele roda nativamente em:
+O código faz uso de bibliotecas de sistema Unix (`<termios.h>`, `<unistd.h>`). Por isso, ele roda nativamente em:
 - **macOS**
 - **Linux**
 - *(Windows apenas via WSL)*

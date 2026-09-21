@@ -2,8 +2,10 @@
 #include "./utils/funcTerminal.hpp"
 #include "./utils/funcUtilitarias.hpp"
 
+#include <chrono>
 #include <cstdlib>
 #include <ctime>
+#include <deque>
 #include <iostream>
 #include <string>
 #include <unistd.h>
@@ -14,14 +16,98 @@ using namespace std;
 
 enum Resultado { SAIU, MORREU, VENCEU };
 
-static const int VELOCIDADE_INICIAL = 130000;
-static const int VELOCIDADE_MAXIMA = 60000;
-static const int GANHO_POR_FRUTA = 2500;
+static const int VELOCIDADE_INICIAL = 180000;
+static const int VELOCIDADE_MAXIMA = 90000;
+static const int GANHO_POR_FRUTA = 1500;
+
+// De quanto em quanto tempo o teclado e cutucado dentro de um mesmo passo.
+static const int PASSO_LEITURA = 5000;
+
+static const string MSG_PAUSA = "\033[1m\033[38;5;220m|| PAUSADO \033[0m"
+                                "\033[38;5;245m— [P] continuar\033[0m";
 
 // Um frame anda mais rapido conforme a cobra cresce.
 static int intervalo(int pontos) {
   int espera = VELOCIDADE_INICIAL - pontos * GANHO_POR_FRUTA;
   return (espera < VELOCIDADE_MAXIMA) ? VELOCIDADE_MAXIMA : espera;
+}
+
+// Guarda ate duas viradas na fila para que dois toques rapidos (direita e
+// logo depois cima) virem em passos seguidos em vez de um deles se perder.
+static void enfileirarVirada(deque<pair<int, int>> &viradas,
+                             const pair<int, int> &dirAtual,
+                             const pair<int, int> &nova) {
+  pair<int, int> ultima = viradas.empty() ? dirAtual : viradas.back();
+
+  // Meia volta em cima do proprio corpo nao vale, e repetir a direcao atual
+  // so ocuparia uma vaga na fila a toa.
+  if (ultima == nova ||
+      (ultima.first == -nova.first && ultima.second == -nova.second)) {
+    return;
+  }
+  if (viradas.size() < 2) {
+    viradas.push_back(nova);
+  }
+}
+
+// Le tudo que foi digitado desde a ultima chamada e traduz em viradas e
+// comandos. Devolve true quando o jogador pediu para sair.
+static bool processarEntrada(deque<pair<int, int>> &viradas,
+                             const pair<int, int> &dirAtual, bool &pausado) {
+  char teclas[32];
+  int lidos = lerTeclas(teclas, sizeof(teclas));
+
+  for (int i = 0; i < lidos; i++) {
+    char tecla = teclas[i];
+
+    // Setas chegam como ESC [ A/B/C/D — converte para o WASD equivalente.
+    if (tecla == '\033' && i + 2 < lidos && teclas[i + 1] == '[') {
+      switch (teclas[i + 2]) {
+      case 'A':
+        tecla = 'w';
+        break;
+      case 'B':
+        tecla = 's';
+        break;
+      case 'C':
+        tecla = 'd';
+        break;
+      case 'D':
+        tecla = 'a';
+        break;
+      default:
+        tecla = 0;
+        break;
+      }
+      i += 2;
+    }
+
+    if (tecla == 'q' || tecla == 'Q') {
+      return true;
+    }
+    if (tecla == 'p' || tecla == 'P') {
+      pausado = !pausado;
+      continue;
+    }
+    if (pausado) {
+      continue;
+    }
+
+    if (tecla == 'w' || tecla == 'W') {
+      enfileirarVirada(viradas, dirAtual, make_pair(-1, 0));
+    }
+    if (tecla == 's' || tecla == 'S') {
+      enfileirarVirada(viradas, dirAtual, make_pair(1, 0));
+    }
+    if (tecla == 'a' || tecla == 'A') {
+      enfileirarVirada(viradas, dirAtual, make_pair(0, -1));
+    }
+    if (tecla == 'd' || tecla == 'D') {
+      enfileirarVirada(viradas, dirAtual, make_pair(0, 1));
+    }
+  }
+
+  return false;
 }
 
 static void contagemRegressiva(int tamanho,
@@ -43,80 +129,61 @@ static Resultado jogar(int tamanho, int &pontos) {
 
   pair<int, int> posicaoFruta = criarFruta(posicoesCobrinha, tamanho);
   pair<int, int> dirXY = make_pair(0, 1);
+  deque<pair<int, int>> viradas;
   bool pausado = false;
   pontos = 0;
 
   contagemRegressiva(tamanho, posicoesCobrinha, posicaoFruta);
+  desenharQuadro(tamanho, posicoesCobrinha, posicaoFruta, pontos, "");
+
+  chrono::steady_clock::time_point proximoPasso = chrono::steady_clock::now();
 
   while (true) {
-    desenharQuadro(tamanho, posicoesCobrinha, posicaoFruta, pontos,
-                   pausado ? "\033[1m\033[38;5;220m|| PAUSADO \033[0m"
-                             "\033[38;5;245m— [P] continuar\033[0m"
-                           : "");
+    proximoPasso += chrono::microseconds(intervalo(pontos));
 
-    char teclas[32];
-    int lidos = lerTeclas(teclas, sizeof(teclas));
-    bool jaVirou = false;
+    // Se o desenho de um quadro demorou mais que o passo inteiro, nao vale
+    // disparar varios passos seguidos para "recuperar" o atraso.
+    if (proximoPasso < chrono::steady_clock::now()) {
+      proximoPasso = chrono::steady_clock::now() +
+                     chrono::microseconds(intervalo(pontos));
+    }
 
-    for (int i = 0; i < lidos; i++) {
-      char tecla = teclas[i];
-
-      // Setas chegam como ESC [ A/B/C/D — converte para o WASD equivalente.
-      if (tecla == '\033' && i + 2 < lidos && teclas[i + 1] == '[') {
-        switch (teclas[i + 2]) {
-        case 'A':
-          tecla = 'w';
-          break;
-        case 'B':
-          tecla = 's';
-          break;
-        case 'C':
-          tecla = 'd';
-          break;
-        case 'D':
-          tecla = 'a';
-          break;
-        default:
-          tecla = 0;
-          break;
-        }
-        i += 2;
+    // Em vez de dormir o passo inteiro de uma vez, o teclado e lido a cada
+    // poucos milissegundos: a tecla entra na fila quase na hora em que foi
+    // apertada, e nao so quando o passo termina. O que falta sempre vem do
+    // relogio — somar os usleep curtos esticaria o passo, porque cada um
+    // deles dorme um pouco mais do que foi pedido.
+    while (true) {
+      long long falta = chrono::duration_cast<chrono::microseconds>(
+                            proximoPasso - chrono::steady_clock::now())
+                            .count();
+      if (falta <= 0) {
+        break;
       }
+      usleep((useconds_t)((falta < PASSO_LEITURA) ? falta : PASSO_LEITURA));
 
-      if (tecla == 'q' || tecla == 'Q') {
+      if (processarEntrada(viradas, dirXY, pausado)) {
         return SAIU;
       }
-      if (tecla == 'p' || tecla == 'P') {
-        pausado = !pausado;
-        continue;
-      }
 
-      // So a primeira virada de cada frame vale, senao dois toques rapidos
-      // deixariam a cobra dar meia volta em cima do proprio corpo.
-      if (jaVirou || pausado) {
-        continue;
-      }
-      if ((tecla == 'w' || tecla == 'W') && dirXY.first != 1) {
-        dirXY = make_pair(-1, 0);
-        jaVirou = true;
-      }
-      if ((tecla == 's' || tecla == 'S') && dirXY.first != -1) {
-        dirXY = make_pair(1, 0);
-        jaVirou = true;
-      }
-      if ((tecla == 'a' || tecla == 'A') && dirXY.second != 1) {
-        dirXY = make_pair(0, -1);
-        jaVirou = true;
-      }
-      if ((tecla == 'd' || tecla == 'D') && dirXY.second != -1) {
-        dirXY = make_pair(0, 1);
-        jaVirou = true;
+      if (pausado) {
+        desenharQuadro(tamanho, posicoesCobrinha, posicaoFruta, pontos,
+                       MSG_PAUSA);
+        while (pausado) {
+          usleep(PASSO_LEITURA);
+          if (processarEntrada(viradas, dirXY, pausado)) {
+            return SAIU;
+          }
+        }
+        desenharQuadro(tamanho, posicoesCobrinha, posicaoFruta, pontos, "");
+        proximoPasso = chrono::steady_clock::now() +
+                       chrono::microseconds(intervalo(pontos));
       }
     }
 
-    if (pausado) {
-      usleep(80000);
-      continue;
+    if (!viradas.empty()) {
+      dirXY = viradas.front();
+      viradas.pop_front();
     }
 
     pair<int, int> cabeca = posicoesCobrinha[0];
@@ -132,12 +199,13 @@ static Resultado jogar(int tamanho, int &pontos) {
       pontos++;
     }
 
+    // Desenha logo apos o passo, e nao no comeco do proximo: senao o
+    // movimento so apareceria um frame inteiro depois de ter acontecido.
+    desenharQuadro(tamanho, posicoesCobrinha, posicaoFruta, pontos, "");
+
     if (posicaoFruta.first < 0) {
-      desenharQuadro(tamanho, posicoesCobrinha, posicaoFruta, pontos, "");
       return VENCEU;
     }
-
-    usleep(intervalo(pontos));
   }
 }
 
@@ -172,7 +240,7 @@ int main() {
           sair = true;
         }
       }
-      usleep(50000);
+      usleep(30000);
     }
 
     if (sair) {
